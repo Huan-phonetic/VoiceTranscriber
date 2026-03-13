@@ -358,15 +358,11 @@ class App(tk.Tk):
             self._status("设置已保存。重新扫描录音目录…")
             self.after(300, self._rescan)
 
-    def _check_config(self) -> bool:
-        if not self.cfg.get("recordings_dir"):
-            messagebox.showinfo("首次使用", "请先配置录音目录和思源笔记连接信息。")
-            self._open_settings()
-        return bool(self.cfg.get("recordings_dir"))
-
     # ── 启动 / 扫描 ───────────────────────────────────────────────────────────
     def _startup(self):
-        if not self._check_config():
+        self._open_settings()
+        if not self.cfg.get("recordings_dir"):
+            self.destroy()
             return
         rec_dir = self.cfg["recordings_dir"]
         files = self._scan(rec_dir)
