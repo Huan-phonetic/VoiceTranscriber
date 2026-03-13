@@ -1,0 +1,11 @@
+{
+  "recordings_dir":  "\\\\YOUR_NAS\\Recording",
+  "assets_dir":      "\\\\YOUR_NAS\\siyuan\\data\\assets",
+  "siyuan_url":      "http://YOUR_SIYUAN_HOST:6806",
+  "siyuan_token":    "YOUR_SIYUAN_TOKEN",
+  "diary_notebook":  "YOUR_NOTEBOOK_ID",
+  "diary_root_path": "/daily note",
+  "model":           "large-v3",
+  "language":        "zh",
+  "device":          "auto"
+}
