@@ -179,7 +179,11 @@ def push_to_siyuan(cfg: dict, dt: datetime, audio_filename: str, text: str) -> s
         return "思源未配置，已跳过"
     year, month, day = dt.strftime("%Y"), dt.strftime("%m"), dt.strftime("%Y-%m-%d")
     hpath    = f"{root}/{year}/{month}/{day}"
-    block_md = f"![{audio_filename}](assets/{audio_filename})\n\n{text}"
+    time_str = dt.strftime("%H:%M")
+    block_md = (
+        f'<audio controls="controls" src="assets/{audio_filename}"></audio>\n\n'
+        f"{time_str} 录音转写：\n\n{text}"
+    )
     doc_id = sy_find_doc(url, token, hpath)
     if doc_id:
         already = sy_sql(url, token,
