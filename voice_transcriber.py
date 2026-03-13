@@ -364,22 +364,14 @@ class App(tk.Tk):
     # ── 启动 / 扫描 ───────────────────────────────────────────────────────────
     def _startup(self):
         self._open_settings()
-        if not self.cfg.get("recordings_dir"):
-            self.destroy()
+        rec_dir = self.cfg.get("recordings_dir", "")
+        if not rec_dir:
+            self._status("请点击「⚙ 设置」配置录音目录。")
             return
-        rec_dir = self.cfg["recordings_dir"]
-        files = self._scan(rec_dir)
-        total = len(files)
-        if total == 0:
-            messagebox.showinfo("完成", f"录音目录中没有待处理的文件。\n\n{rec_dir}")
+        self.files = self._scan(rec_dir)
+        if not self.files:
+            self._status(f"没有待处理的录音文件：{rec_dir}")
             return
-        if not messagebox.askokcancel(
-            "VoiceDecoder",
-            f"找到 {total} 个待转写录音。\n\n目录：{rec_dir}\n\n点击确定开始。"
-        ):
-            self.destroy()
-            return
-        self.files = files
         self._populate_list()
         self._load_current()
 
@@ -529,33 +521,40 @@ class App(tk.Tk):
     def _approve(self):
         text = self._text.get("1.0", tk.END).strip()
         if not text:
-            messagebox.showwarning("空内容", "没有可保存的转写文字。")
+            if not self._auto:
+                messagebox.showwarning("空内容", "没有可保存的转写文字。")
             return
-        path = self.files[self.idx]
-        dt   = extract_date(path)
+        try:
+            path = self.files[self.idx]
+            dt   = extract_date(path)
 
-        path.with_suffix(".txt").write_text(text, encoding="utf-8")
+            path.with_suffix(".txt").write_text(text, encoding="utf-8")
 
-        assets_dir = self.cfg.get("assets_dir", "")
-        copy_msg = "资产目录未配置，已跳过"
-        if assets_dir:
-            asset_dest = Path(assets_dir) / path.name
-            if asset_dest.exists():
-                copy_msg = "音频已在资产目录"
-            else:
-                try:
-                    shutil.copy2(str(path), str(asset_dest))
-                    copy_msg = "音频已复制"
-                except Exception as e:
-                    copy_msg = f"复制失败：{e}"
+            assets_dir = self.cfg.get("assets_dir", "")
+            copy_msg = "资产目录未配置，已跳过"
+            if assets_dir:
+                asset_dest = Path(assets_dir) / path.name
+                if asset_dest.exists():
+                    copy_msg = "音频已在资产目录"
+                else:
+                    try:
+                        shutil.copy2(str(path), str(asset_dest))
+                        copy_msg = "音频已复制"
+                    except Exception as e:
+                        copy_msg = f"复制失败：{e}"
 
-        sy_msg = push_to_siyuan(self.cfg, dt, path.name, text)
+            sy_msg = push_to_siyuan(self.cfg, dt, path.name, text)
 
-        self.processed.add(str(path))
-        save_processed(self.processed)
-        self._listbox.itemconfig(self.idx, foreground="#888")
-        self._status(f"已保存  |  {copy_msg}  |  思源：{sy_msg}")
-        self.after(1800, self._next)
+            self.processed.add(str(path))
+            save_processed(self.processed)
+            self._listbox.itemconfig(self.idx, foreground="#888")
+            self._status(f"已保存  |  {copy_msg}  |  思源：{sy_msg}")
+            self.after(1800, self._next)
+        except Exception as e:
+            self._status(f"保存出错：{e}")
+            if self._auto:
+                self._toggle_auto()
+            messagebox.showerror("保存失败", str(e))
 
     def _approve_txt_only(self):
         text = self._text.get("1.0", tk.END).strip()
