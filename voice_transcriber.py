@@ -278,7 +278,7 @@ class App(tk.Tk):
         ttk.Combobox(top, textvariable=self._device,
                      values=["auto", "cuda", "cpu"], width=6).pack(side=tk.LEFT, padx=(2, 10))
 
-        ttk.Button(top, text="⚙ 设置", command=self._open_settings).pack(side=tk.LEFT, padx=8)
+        ttk.Button(top, text="⚙ 设置", command=self._settings_and_rescan).pack(side=tk.LEFT, padx=8)
 
         self._progress_var = tk.StringVar(value="—")
         ttk.Label(top, textvariable=self._progress_var,
@@ -355,8 +355,11 @@ class App(tk.Tk):
         if dlg.result:
             self.cfg.update(dlg.result)
             save_config(self.cfg)
-            self._status("设置已保存。重新扫描录音目录…")
-            self.after(300, self._rescan)
+            self._status("设置已保存。")
+
+    def _settings_and_rescan(self):
+        self._open_settings()
+        self._rescan()
 
     # ── 启动 / 扫描 ───────────────────────────────────────────────────────────
     def _startup(self):
