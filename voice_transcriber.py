@@ -99,13 +99,21 @@ def transcribe(path: Path, model_name: str, language: str, device: str,
             from faster_whisper import WhisperModel
             actual_device = ("cuda" if torch.cuda.is_available() else "cpu") \
                             if device == "auto" else device
-            compute_type = "float16" if actual_device == "cuda" else "int8"
-            on_status(f"加载模型 '{model_name}'（{actual_device}）…")
-            model = WhisperModel(model_name, device=actual_device, compute_type=compute_type)
+            # int8_float16：比 float16 更省显存且更稳定，避免 CTranslate2 在某些显卡上的硬崩
+            compute_type = "int8_float16" if actual_device == "cuda" else "int8"
+            on_status(f"加载模型 '{model_name}'（{actual_device}/{compute_type}）…")
+            try:
+                model = WhisperModel(model_name, device=actual_device, compute_type=compute_type)
+            except Exception:
+                # 降级到 float32 再试一次
+                compute_type = "float32" if actual_device == "cuda" else "int8"
+                on_status(f"int8_float16 不可用，降级到 {compute_type}…")
+                model = WhisperModel(model_name, device=actual_device, compute_type=compute_type)
             on_status(f"转写中（{actual_device}）…")
             lang = language if language != "auto" else None
             segments, info = model.transcribe(
                 str(path), language=lang, vad_filter=True,
+                beam_size=1,
                 initial_prompt="以下是普通话的句子，使用简体中文标点符号。",
             )
             total = info.duration or 1
