@@ -284,6 +284,9 @@ class App(tk.Tk):
         ttk.Label(top, textvariable=self._progress_var,
                   foreground="#555").pack(side=tk.RIGHT, padx=8)
 
+        bot = ttk.Frame(self, padding=(8, 4))
+        bot.pack(fill=tk.X, side=tk.BOTTOM)
+
         paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
         paned.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
 
@@ -319,9 +322,6 @@ class App(tk.Tk):
         ttk.Label(rf, textvariable=self._status_var, foreground="#0066cc",
                   wraplength=750, justify=tk.LEFT).pack(anchor=tk.W, padx=4, pady=2)
 
-        bot = ttk.Frame(self, padding=(8, 4))
-        bot.pack(fill=tk.X)
-
         self._btn_prev  = ttk.Button(bot, text="← 上一个",  command=self._prev)
         self._btn_prev.pack(side=tk.LEFT, padx=4)
         self._btn_trans = ttk.Button(bot, text="开始转写",   command=self._start_transcription)
@@ -347,6 +347,7 @@ class App(tk.Tk):
         self.bind("<Control-Return>", lambda _: self._approve())
         self.bind("<Control-Right>",  lambda _: self._skip())
         self.bind("<Control-Left>",   lambda _: self._prev())
+        self.after(10, self.lift)
 
     # ── 设置 ──────────────────────────────────────────────────────────────────
     def _open_settings(self):
@@ -456,7 +457,12 @@ class App(tk.Tk):
     def _next(self):
         self.idx += 1
         if self.idx < len(self.files):
-            self._load_current()
+            try:
+                self._load_current()
+            except Exception as e:
+                self._status(f"加载文件出错：{e}")
+                if self._auto:
+                    self.after(1000, self._next)
         else:
             self._status("全部完成！")
             if self._auto:
@@ -553,8 +559,9 @@ class App(tk.Tk):
         except Exception as e:
             self._status(f"保存出错：{e}")
             if self._auto:
-                self._toggle_auto()
-            messagebox.showerror("保存失败", str(e))
+                self.after(2000, self._next)
+            else:
+                messagebox.showerror("保存失败", str(e))
 
     def _approve_txt_only(self):
         text = self._text.get("1.0", tk.END).strip()
@@ -575,8 +582,11 @@ class App(tk.Tk):
         if self._auto:
             self._btn_auto.config(text="■ 停止自动", style="AutoOn.TButton")
             self._status("自动模式已开启，将依次转写并保存所有录音。")
-            if not self._busy and not self._text.get("1.0", tk.END).strip():
-                self._start_transcription()
+            if not self._busy:
+                if self._text.get("1.0", tk.END).strip():
+                    self.after(0, self._approve)
+                else:
+                    self._start_transcription()
         else:
             self._btn_auto.config(text="▶ 自动运行", style="Auto.TButton")
             self._status("自动模式已停止。")
