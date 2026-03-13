@@ -113,7 +113,7 @@ def transcribe(path: Path, model_name: str, language: str, device: str,
             for seg in segments:
                 full_text += seg.text
                 pct = min(seg.end / total * 100, 100)
-                on_progress(seg.text.strip(), pct, seg.end, total)
+                on_progress(full_text.strip(), pct, seg.end, total)
             on_done(full_text.strip())
         except Exception as e:
             _log_error(f"transcribe [{path.name}] {traceback.format_exc()}")
@@ -501,12 +501,14 @@ class App(tk.Tk):
             on_error   =lambda err: self.after(0, lambda e=err: self._on_error(e)),
         )
 
-    def _on_progress(self, seg_text: str, pct: float, pos: float, dur: float):
-        self._text.delete("1.0", tk.END)
-        self._text.insert("1.0", seg_text)
+    def _on_progress(self, full_so_far: str, pct: float, pos: float, dur: float):
         self._pbar["value"] = pct
         e, t = int(pos), int(dur)
         self._status(f"转写中… {e//60}:{e%60:02d} / {t//60}:{t%60:02d}  ({pct:.0f}%)")
+        # 每 5% 才刷新一次文本区，避免频繁 UI 更新堵塞事件队列
+        if int(pct) % 5 == 0:
+            self._text.delete("1.0", tk.END)
+            self._text.insert("1.0", full_so_far)
 
     def _on_done(self, text: str):
         self._busy = False
@@ -543,39 +545,55 @@ class App(tk.Tk):
             else:
                 messagebox.showwarning("空内容", "没有可保存的转写文字。")
             return
-        try:
-            path = self.files[self.idx]
-            dt   = extract_date(path)
 
-            path.with_suffix(".txt").write_text(text, encoding="utf-8")
+        path = self.files[self.idx]
+        dt   = extract_date(path)
+        cfg  = dict(self.cfg)
+        idx  = self.idx
+        self._set_buttons(False)
+        self._status("保存中…")
 
-            assets_dir = self.cfg.get("assets_dir", "")
-            copy_msg = "资产目录未配置，已跳过"
-            if assets_dir:
-                asset_dest = Path(assets_dir) / path.name
-                if asset_dest.exists():
-                    copy_msg = "音频已在资产目录"
-                else:
-                    try:
-                        shutil.copy2(str(path), str(asset_dest))
-                        copy_msg = "音频已复制"
-                    except Exception as e:
-                        copy_msg = f"复制失败：{e}"
+        def _do_save():
+            try:
+                path.with_suffix(".txt").write_text(text, encoding="utf-8")
 
-            sy_msg = push_to_siyuan(self.cfg, dt, path.name, text)
+                assets_dir = cfg.get("assets_dir", "")
+                copy_msg = "资产目录未配置，已跳过"
+                if assets_dir:
+                    asset_dest = Path(assets_dir) / path.name
+                    if asset_dest.exists():
+                        copy_msg = "音频已在资产目录"
+                    else:
+                        try:
+                            shutil.copy2(str(path), str(asset_dest))
+                            copy_msg = "音频已复制"
+                        except Exception as e:
+                            copy_msg = f"复制失败：{e}"
 
-            self.processed.add(str(path))
-            save_processed(self.processed)
-            self._listbox.itemconfig(self.idx, foreground="#888")
-            self._status(f"已保存  |  {copy_msg}  |  思源：{sy_msg}")
-            self.after(1800, self._next)
-        except Exception as e:
-            _log_error(f"_approve [{getattr(self, 'idx', '?')}] {traceback.format_exc()}")
-            self._status(f"保存出错：{e}")
-            if self._auto:
-                self.after(2000, self._next)
-            else:
-                messagebox.showerror("保存失败", str(e))
+                sy_msg = push_to_siyuan(cfg, dt, path.name, text)
+
+                self.after(0, lambda: self._on_approved(idx, path, copy_msg, sy_msg))
+            except Exception as e:
+                _log_error(f"_approve [{idx}] {traceback.format_exc()}")
+                self.after(0, lambda err=str(e): self._on_approve_error(err))
+
+        threading.Thread(target=_do_save, daemon=True).start()
+
+    def _on_approved(self, idx: int, path: Path, copy_msg: str, sy_msg: str):
+        self.processed.add(str(path))
+        save_processed(self.processed)
+        self._listbox.itemconfig(idx, foreground="#888")
+        self._set_buttons(True)
+        self._status(f"已保存  |  {copy_msg}  |  思源：{sy_msg}")
+        self.after(1800, self._next)
+
+    def _on_approve_error(self, err: str):
+        self._set_buttons(True)
+        self._status(f"保存出错：{err}")
+        if self._auto:
+            self.after(2000, self._next)
+        else:
+            messagebox.showerror("保存失败", err)
 
     def _approve_txt_only(self):
         text = self._text.get("1.0", tk.END).strip()
