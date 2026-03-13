@@ -6,6 +6,7 @@ import re
 import json
 import shutil
 import threading
+import traceback
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 from pathlib import Path
@@ -28,6 +29,14 @@ WHISPER_MODELS = ["turbo", "large-v3", "medium", "small", "base", "tiny"]
 
 CONFIG_FILE    = Path(__file__).parent / "config.json"
 PROCESSED_FILE = Path(__file__).parent / "processed.json"
+LOG_FILE       = Path(__file__).parent / "error.log"
+
+def _log_error(msg: str):
+    try:
+        with LOG_FILE.open("a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}\n")
+    except Exception:
+        pass
 
 # ── 持久化 ────────────────────────────────────────────────────────────────────
 def load_config() -> dict:
@@ -107,6 +116,7 @@ def transcribe(path: Path, model_name: str, language: str, device: str,
                 on_progress(seg.text.strip(), pct, seg.end, total)
             on_done(full_text.strip())
         except Exception as e:
+            _log_error(f"transcribe [{path.name}] {traceback.format_exc()}")
             on_error(str(e))
     threading.Thread(target=worker, daemon=True).start()
 
@@ -120,7 +130,7 @@ def sy_sql(url: str, token: str, stmt: str) -> list[dict]:
                           headers=_sy_headers(token), json={"stmt": stmt}, timeout=10)
         return r.json().get("data") or []
     except Exception as e:
-        print(f"[SiYuan SQL] {e}")
+        _log_error(f"sy_sql: {e}")
         return []
 
 def sy_find_doc(url: str, token: str, hpath: str) -> str | None:
@@ -137,7 +147,7 @@ def sy_create_doc(url: str, token: str, notebook: str, path: str, markdown: str)
         d = r.json()
         return d.get("data") if d.get("code") == 0 else None
     except Exception as e:
-        print(f"[SiYuan createDoc] {e}")
+        _log_error(f"sy_create_doc: {e}")
         return None
 
 def sy_append(url: str, token: str, parent_id: str, markdown: str) -> bool:
@@ -149,7 +159,7 @@ def sy_append(url: str, token: str, parent_id: str, markdown: str) -> bool:
                           timeout=10)
         return r.json().get("code") == 0
     except Exception as e:
-        print(f"[SiYuan append] {e}")
+        _log_error(f"sy_append: {e}")
         return False
 
 def push_to_siyuan(cfg: dict, dt: datetime, audio_filename: str, text: str) -> str:
@@ -527,7 +537,10 @@ class App(tk.Tk):
     def _approve(self):
         text = self._text.get("1.0", tk.END).strip()
         if not text:
-            if not self._auto:
+            if self._auto:
+                self._status("转写结果为空，跳过此文件。")
+                self.after(500, self._next)
+            else:
                 messagebox.showwarning("空内容", "没有可保存的转写文字。")
             return
         try:
@@ -557,6 +570,7 @@ class App(tk.Tk):
             self._status(f"已保存  |  {copy_msg}  |  思源：{sy_msg}")
             self.after(1800, self._next)
         except Exception as e:
+            _log_error(f"_approve [{getattr(self, 'idx', '?')}] {traceback.format_exc()}")
             self._status(f"保存出错：{e}")
             if self._auto:
                 self.after(2000, self._next)
@@ -609,4 +623,8 @@ class App(tk.Tk):
 
 # ── 入口 ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    App().mainloop()
+    try:
+        App().mainloop()
+    except Exception:
+        _log_error(f"FATAL\n{traceback.format_exc()}")
+        raise
